@@ -23,6 +23,7 @@ class TrainingConfig:
     dataset_dir: str
     output_dir: str
     sensor: str
+    fit_mode: str = "final"
     include_ratios: bool = True
     include_coastal: bool = False
     monte_carlo_runs: int = 50
@@ -33,6 +34,7 @@ class TrainingConfig:
     hidden_dims: tuple[int, ...] = (100, 100, 100, 100, 100)
     learning_rate: float = 1.0e-3
     weight_decay: float = 1.0e-3
+    epsilon: float = 1.0e-3
     batch_size: int = 128
     max_epochs: int = 500
     patience: int = 40
@@ -72,7 +74,8 @@ def _transform_xy(x_scaler, y_scaler, X: np.ndarray, y: np.ndarray | None = None
 
 
 def _inverse_target(y_scaler, y_scaled: np.ndarray) -> np.ndarray:
-    return np.exp(y_scaler.inverse_transform(y_scaled.reshape(-1, 1)).reshape(-1))
+    clipped = np.clip(y_scaled, -1.0, 1.0)
+    return np.exp(y_scaler.inverse_transform(clipped.reshape(-1, 1)).reshape(-1))
 
 
 def _build_loader(torch, X: np.ndarray, y: np.ndarray, batch_size: int, shuffle: bool):
@@ -126,13 +129,13 @@ def _train_member(
         for batch_x, batch_y in train_loader:
             optimizer.zero_grad()
             outputs = model(batch_x)
-            loss = mdn_nll_loss(outputs, batch_y)
+            loss = mdn_nll_loss(outputs, batch_y, epsilon=config.epsilon)
             loss.backward()
             optimizer.step()
 
         model.eval()
         with torch.no_grad():
-            valid_loss = float(mdn_nll_loss(model(X_valid_tensor), y_valid_tensor).item())
+            valid_loss = float(mdn_nll_loss(model(X_valid_tensor), y_valid_tensor, epsilon=config.epsilon).item())
 
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
@@ -186,9 +189,85 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
     output_root = Path(config.output_dir).expanduser() / sensor
     output_root.mkdir(parents=True, exist_ok=True)
 
+    torch, _ = require_torch()
+
+    if config.fit_mode == "final":
+        valid_splitter = GroupShuffleSplit(
+            n_splits=1,
+            test_size=config.validation_fraction,
+            random_state=config.seed,
+        )
+        fit_idx, valid_idx = next(valid_splitter.split(X_all, y_all, groups=groups))
+        X_fit_raw = X_all[fit_idx]
+        y_fit_raw = y_all[fit_idx]
+        X_valid_raw = X_all[valid_idx]
+        y_valid_raw = y_all[valid_idx]
+
+        x_scaler, y_scaler = _fit_scalers(X_fit_raw, y_fit_raw)
+        X_fit, y_fit = _transform_xy(x_scaler, y_scaler, X_fit_raw, y_fit_raw)
+        X_valid, y_valid = _transform_xy(x_scaler, y_scaler, X_valid_raw, y_valid_raw)
+        X_all_scaled, _ = _transform_xy(x_scaler, y_scaler, X_all)
+
+        models = []
+        member_losses = []
+        for member_index in range(config.ensemble_size):
+            member_seed = config.seed + member_index
+            model, val_loss = _train_member(config, X_fit, y_fit, X_valid, y_valid, member_seed)
+            models.append(model)
+            member_losses.append(val_loss)
+
+        valid_pred_scaled = _predict_ensemble(models, X_valid, config.prediction_mode)
+        valid_pred = np.clip(_inverse_target(y_scaler, valid_pred_scaled), a_min=1.0e-6, a_max=None)
+        valid_metrics = summarize_regression(y_valid_raw, valid_pred)
+        valid_metrics.update(
+            {
+                "mean_member_val_nll": float(np.mean(member_losses)),
+                "n_features": len(feature_set.feature_names),
+            }
+        )
+
+        full_pred_scaled = _predict_ensemble(models, X_all_scaled, config.prediction_mode)
+        full_pred = np.clip(_inverse_target(y_scaler, full_pred_scaled), a_min=1.0e-6, a_max=None)
+
+        final_dir = output_root / "final_model"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "feature_names": feature_set.feature_names,
+                "band_columns": feature_set.band_columns,
+                "x_scaler": x_scaler,
+                "y_scaler": y_scaler,
+                "config": asdict(config),
+            },
+            final_dir / "preprocessing.joblib",
+        )
+        for member_index, model in enumerate(models, start=1):
+            torch.save(model.state_dict(), final_dir / f"member_{member_index:02d}.pt")
+
+        validation_frame = meta.iloc[valid_idx].copy()
+        validation_frame["observed_secchi_m"] = y_valid_raw
+        validation_frame["predicted_secchi_m"] = valid_pred
+        validation_frame.to_csv(final_dir / "validation_predictions.csv", index=False)
+
+        full_frame = meta.copy()
+        full_frame["observed_secchi_m"] = y_all
+        full_frame["predicted_secchi_m"] = full_pred
+        full_frame.to_csv(final_dir / "full_dataset_predictions.csv", index=False)
+        pd.DataFrame([valid_metrics]).to_csv(final_dir / "validation_metrics.csv", index=False)
+
+        summary = {
+            "sensor": sensor,
+            "fit_mode": config.fit_mode,
+            "rows": int(len(frame)),
+            "groups": int(pd.Series(groups).nunique()),
+            "feature_names": list(feature_set.feature_names),
+            "validation_metrics": valid_metrics,
+        }
+        (output_root / "summary.json").write_text(json.dumps(summary, indent=2))
+        return summary
+
     run_summaries: list[dict[str, float]] = []
     all_predictions: list[pd.DataFrame] = []
-    torch, _ = require_torch()
 
     for run_index, (train_idx, test_idx) in enumerate(splitter.split(X_all, y_all, groups=groups), start=1):
         X_train_full = X_all[train_idx]
@@ -263,6 +342,7 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
 
     summary = {
         "sensor": sensor,
+        "fit_mode": config.fit_mode,
         "rows": int(len(frame)),
         "groups": int(pd.Series(groups).nunique()),
         "feature_names": list(feature_set.feature_names),

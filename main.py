@@ -5,4 +5,4 @@ from src.secchi_mdn.cli import main
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

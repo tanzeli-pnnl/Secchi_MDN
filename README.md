@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ## Training
 
-Train all three sensor-specific global models:
+Train all three sensor-specific global models with the paper-style fixed architecture:
 
 ```bash
 python main.py train \
@@ -43,15 +43,21 @@ python main.py train \
 
 Useful knobs:
 
+- `--fit-mode final` to train the recommended architecture directly
+- `--fit-mode monte_carlo` to keep repeated split evaluation
 - `--monte-carlo-runs 50`
 - `--ensemble-size 10`
 - `--n-mix 5`
 - `--hidden-dims 100 100 100 100 100`
+- `--learning-rate 0.001`
+- `--weight-decay 0.001`
+- `--epsilon 0.001`
 - `--prediction-mode top`
 - `--include-coastal` if you want to experiment with the OLI coastal band
 
 ## Notes On Reproduction
 
+- The defaults now match the authors' recommended MDN architecture: `n_mix=5`, `hidden=[100,100,100,100,100]`, `l2=0.001`, `lr=0.001`, `epsilon=0.001`.
 - The original public scripts mostly use three visible bands for TM, ETM+, and OLI, with ratio features enabled.
 - The original repository wraps a larger TensorFlow MDN package. This repo reimplements the training path in PyTorch so it is easier to understand and maintain.
 - The grouped split key here is reconstructed as `local + year-month(date)`, which is the closest match to the `local_year_month` grouping used in the published scripts.

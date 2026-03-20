@@ -1,0 +1,29 @@
+{
+  "sensor": "etm",
+  "fit_mode": "final",
+  "rows": 5555,
+  "groups": 737,
+  "feature_names": [
+    "blue",
+    "green",
+    "red",
+    "green_over_blue",
+    "blue_over_green",
+    "blue_over_red",
+    "green_over_red",
+    "red_over_green",
+    "line_height_blue_green_red"
+  ],
+  "validation_metrics": {
+    "n": 1168,
+    "mae": 1.7119303535489487,
+    "rmse": 3.5255993191688093,
+    "mape_percent": 34.849479225669846,
+    "rmsle": 0.5613764735551743,
+    "r2": 0.7909093392237192,
+    "epsilon_percent": 34.467230782878325,
+    "beta_percent": -23.263713573027857,
+    "mean_member_val_nll": 108.40668144226075,
+    "n_features": 9
+  }
+}
