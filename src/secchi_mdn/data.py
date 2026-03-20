@@ -64,6 +64,7 @@ def load_sensor_dataframe(dataset_dir: str | Path, sensor: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Spreadsheet not found: {path}")
 
     rename_map = {**COMMON_COLUMNS, **{_band_column_name(b): b for b in spec.input_bands}}
+    # Normalize the spreadsheet-specific labels into a stable schema used by the trainer.
     frame = pd.read_excel(path, engine="openpyxl").rename(columns=rename_map)
     expected_columns = list(rename_map.values())
     missing = [column for column in expected_columns if column not in frame.columns]
@@ -75,6 +76,7 @@ def load_sensor_dataframe(dataset_dir: str | Path, sensor: str) -> pd.DataFrame:
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     frame = frame.dropna(subset=["date", "secchi_m", *spec.default_bands])
     frame = frame[frame["secchi_m"] > 0].copy()
+    # The published scripts split by a combined location/month key to reduce leakage.
     frame["group_key"] = frame["local"].astype(str) + "_" + frame["date"].dt.to_period("M").astype(str)
     frame["row_id"] = frame.index.astype(str)
     return frame.reset_index(drop=True)

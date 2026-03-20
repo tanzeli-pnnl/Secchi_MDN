@@ -27,6 +27,8 @@ def build_feature_matrix(
     features = frame.loc[:, band_columns].astype(float).copy()
 
     if include_ratios:
+        # These simple ratios and line-height terms mirror the style of features used
+        # in the original Secchi MDN workflow without depending on the full upstream package.
         if {"blue", "green"}.issubset(features.columns):
             features["green_over_blue"] = features["green"] / features["blue"]
             features["blue_over_green"] = features["blue"] / features["green"]
@@ -44,6 +46,7 @@ def build_feature_matrix(
         if {"coastal", "blue"}.issubset(features.columns):
             features["blue_over_coastal"] = features["blue"] / features["coastal"]
 
+    # Any invalid ratio propagates to NaN, so keep only rows with a complete feature vector.
     features = features.replace([np.inf, -np.inf], np.nan).dropna().copy()
     feature_names = tuple(features.columns.tolist())
     return features, FeatureSet(feature_names=feature_names, band_columns=band_columns)

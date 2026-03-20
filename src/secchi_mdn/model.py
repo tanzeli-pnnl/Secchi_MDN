@@ -41,6 +41,8 @@ class SecchiMDNFactory:
                     layers.append(nn.ReLU())
                     current_dim = hidden_dim
                 self.backbone = nn.Sequential(*layers)
+                # The network predicts mixture weights, component means, and component spreads
+                # for a 1-D Secchi target in transformed space.
                 self.pi_head = nn.Linear(current_dim, n_mix)
                 self.mu_head = nn.Linear(current_dim, n_mix)
                 self.log_sigma_head = nn.Linear(current_dim, n_mix)
@@ -60,6 +62,7 @@ def mdn_nll_loss(outputs: MDNOutputs, target, epsilon: float = 1.0e-6):
     """Negative log-likelihood for a 1-D Gaussian mixture."""
     torch, _ = require_torch()
     target = target.unsqueeze(-1)
+    # epsilon keeps the gaussian width away from zero so the likelihood stays well-defined.
     sigma = torch.exp(outputs.log_sigma) + epsilon
     log_pi = torch.log_softmax(outputs.pi_logits, dim=-1)
     normal = torch.distributions.Normal(outputs.mu, sigma)
@@ -72,8 +75,10 @@ def mdn_predict(outputs: MDNOutputs, mode: str = "top"):
     torch, _ = require_torch()
     pi = torch.softmax(outputs.pi_logits, dim=-1)
     if mode == "mean":
+        # Weighted mean across all mixture components.
         return (pi * outputs.mu).sum(dim=-1)
     if mode != "top":
         raise ValueError(f"Unknown prediction mode '{mode}'. Expected 'top' or 'mean'.")
+    # "top" matches the common MDN convention of using the most probable component.
     top_index = torch.argmax(pi, dim=-1, keepdim=True)
     return torch.gather(outputs.mu, dim=-1, index=top_index).squeeze(-1)

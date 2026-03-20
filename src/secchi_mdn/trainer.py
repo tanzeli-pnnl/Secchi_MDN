@@ -58,6 +58,7 @@ def _align_target(features: pd.DataFrame, target: pd.Series, meta: pd.DataFrame)
 
 def _fit_scalers(X_train: np.ndarray, y_train: np.ndarray):
     x_scaler = RobustScaler()
+    # The original MDN framework models water-quality targets in log space.
     y_log = np.log(y_train).reshape(-1, 1)
     y_scaler = MinMaxScaler(feature_range=(-1, 1))
     x_scaler.fit(X_train)
@@ -74,6 +75,8 @@ def _transform_xy(x_scaler, y_scaler, X: np.ndarray, y: np.ndarray | None = None
 
 
 def _inverse_target(y_scaler, y_scaled: np.ndarray) -> np.ndarray:
+    # Clamp to the fitted target range before undoing the log transform so
+    # a few unstable MDN outputs do not explode into unrealistic Secchi values.
     clipped = np.clip(y_scaled, -1.0, 1.0)
     return np.exp(y_scaler.inverse_transform(clipped.reshape(-1, 1)).reshape(-1))
 
@@ -96,6 +99,7 @@ def _train_member(
     np.random.seed(seed)
 
     if 0 < config.bagging_fraction < 1:
+        # Each ensemble member sees a different subset of the training rows.
         rng = np.random.default_rng(seed)
         subset_size = max(2, int(len(X_train) * config.bagging_fraction))
         subset_idx = rng.choice(len(X_train), size=subset_size, replace=False)
@@ -137,6 +141,7 @@ def _train_member(
         with torch.no_grad():
             valid_loss = float(mdn_nll_loss(model(X_valid_tensor), y_valid_tensor, epsilon=config.epsilon).item())
 
+        # Early stopping keeps the final model at the best validation checkpoint.
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
@@ -162,6 +167,7 @@ def _predict_ensemble(models, X_scaled: np.ndarray, prediction_mode: str) -> np.
         with torch.no_grad():
             output: MDNOutputs = model(X_tensor)
             predictions.append(mdn_predict(output, mode=prediction_mode).cpu().numpy())
+    # Following the original workflow, aggregate repeated MDN fits with a median.
     return np.median(np.vstack(predictions), axis=0)
 
 
@@ -192,6 +198,8 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
     torch, _ = require_torch()
 
     if config.fit_mode == "final":
+        # Final mode trains the paper's recommended architecture directly, using
+        # only a grouped validation split for early stopping and reporting.
         valid_splitter = GroupShuffleSplit(
             n_splits=1,
             test_size=config.validation_fraction,
@@ -269,6 +277,8 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
     run_summaries: list[dict[str, float]] = []
     all_predictions: list[pd.DataFrame] = []
 
+    # Monte Carlo mode repeats grouped train/test splits to quantify robustness,
+    # not to search over architecture hyperparameters.
     for run_index, (train_idx, test_idx) in enumerate(splitter.split(X_all, y_all, groups=groups), start=1):
         X_train_full = X_all[train_idx]
         y_train_full = y_all[train_idx]
@@ -276,6 +286,7 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
         X_test = X_all[test_idx]
         y_test = y_all[test_idx]
 
+        # Keep validation groups separate from the training groups used in the same run.
         valid_splitter = GroupShuffleSplit(
             n_splits=1,
             test_size=config.validation_fraction,
