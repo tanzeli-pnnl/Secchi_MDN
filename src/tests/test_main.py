@@ -27,9 +27,19 @@ class TestFeatureEngineering(unittest.TestCase):
             include_ratios=True,
         )
 
-        self.assertIn("green_over_blue", features.columns)
-        self.assertIn("line_height_blue_green_red", features.columns)
-        self.assertIn("blue_over_coastal", features.columns)
+        self.assertEqual(
+            tuple(features.columns),
+            (
+                "coastal",
+                "blue",
+                "green",
+                "red",
+                "green_over_blue",
+                "blue_over_red",
+                "green_over_red",
+                "line_height_blue_green_red",
+            ),
+        )
         self.assertEqual(tuple(features.columns), feature_set.feature_names)
 
     def test_parser_accepts_train_command(self):

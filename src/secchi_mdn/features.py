@@ -27,24 +27,20 @@ def build_feature_matrix(
     features = frame.loc[:, band_columns].astype(float).copy()
 
     if include_ratios:
-        # These simple ratios and line-height terms mirror the style of features used
-        # in the original Secchi MDN workflow without depending on the full upstream package.
+        # Maciel et al. (2023) use the visible bands, three forward band ratios,
+        # and a line-height term derived from the visible triplet.
         if {"blue", "green"}.issubset(features.columns):
             features["green_over_blue"] = features["green"] / features["blue"]
-            features["blue_over_green"] = features["blue"] / features["green"]
         if {"blue", "red"}.issubset(features.columns):
             features["blue_over_red"] = features["blue"] / features["red"]
         if {"green", "red"}.issubset(features.columns):
             features["green_over_red"] = features["green"] / features["red"]
-            features["red_over_green"] = features["red"] / features["green"]
         if {"blue", "green", "red"}.issubset(features.columns):
             features["line_height_blue_green_red"] = _line_height(
                 features["blue"].to_numpy(),
                 features["green"].to_numpy(),
                 features["red"].to_numpy(),
             )
-        if {"coastal", "blue"}.issubset(features.columns):
-            features["blue_over_coastal"] = features["blue"] / features["coastal"]
 
     # Any invalid ratio propagates to NaN, so keep only rows with a complete feature vector.
     features = features.replace([np.inf, -np.inf], np.nan).dropna().copy()

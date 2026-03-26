@@ -128,7 +128,9 @@ def _train_member(
     X_valid_tensor = torch.from_numpy(X_valid)
     y_valid_tensor = torch.from_numpy(y_valid)
 
-    for _epoch in range(config.max_epochs):
+    best_epoch = 0
+
+    for epoch in range(config.max_epochs):
         model.train()
         for batch_x, batch_y in train_loader:
             optimizer.zero_grad()
@@ -144,6 +146,7 @@ def _train_member(
         # Early stopping keeps the final model at the best validation checkpoint.
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
+            best_epoch = epoch + 1
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
             epochs_without_improvement = 0
         else:
@@ -156,7 +159,55 @@ def _train_member(
 
     model.load_state_dict(best_state)
     model.eval()
-    return model, best_val_loss
+    return model, best_val_loss, best_epoch
+
+
+def _retrain_member_full_dataset(
+    config: TrainingConfig,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    seed: int,
+    epochs: int,
+):
+    torch, _ = require_torch()
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    if 0 < config.bagging_fraction < 1:
+        # Keep the same ensemble diversity strategy used during validation-guided fitting.
+        rng = np.random.default_rng(seed)
+        subset_size = max(2, int(len(X_train) * config.bagging_fraction))
+        subset_idx = rng.choice(len(X_train), size=subset_size, replace=False)
+        X_fit = X_train[subset_idx]
+        y_fit = y_train[subset_idx]
+    else:
+        X_fit = X_train
+        y_fit = y_train
+
+    torch, model = SecchiMDNFactory.create(
+        input_dim=X_train.shape[1],
+        n_mix=config.n_mix,
+        hidden_dims=list(config.hidden_dims),
+    )
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=config.learning_rate,
+        weight_decay=config.weight_decay,
+    )
+
+    train_loader = _build_loader(torch, X_fit, y_fit, config.batch_size, shuffle=True)
+
+    for _epoch in range(max(1, epochs)):
+        model.train()
+        for batch_x, batch_y in train_loader:
+            optimizer.zero_grad()
+            outputs = model(batch_x)
+            loss = mdn_nll_loss(outputs, batch_y, epsilon=config.epsilon)
+            loss.backward()
+            optimizer.step()
+
+    model.eval()
+    return model
 
 
 def _predict_ensemble(models, X_scaled: np.ndarray, prediction_mode: str) -> np.ndarray:
@@ -218,11 +269,13 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
 
         models = []
         member_losses = []
+        member_epochs = []
         for member_index in range(config.ensemble_size):
             member_seed = config.seed + member_index
-            model, val_loss = _train_member(config, X_fit, y_fit, X_valid, y_valid, member_seed)
+            model, val_loss, best_epoch = _train_member(config, X_fit, y_fit, X_valid, y_valid, member_seed)
             models.append(model)
             member_losses.append(val_loss)
+            member_epochs.append(best_epoch)
 
         valid_pred_scaled = _predict_ensemble(models, X_valid, config.prediction_mode)
         valid_pred = np.clip(_inverse_target(y_scaler, valid_pred_scaled), a_min=1.0e-6, a_max=None)
@@ -230,11 +283,29 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
         valid_metrics.update(
             {
                 "mean_member_val_nll": float(np.mean(member_losses)),
+                "mean_selected_epochs": float(np.mean(member_epochs)),
                 "n_features": len(feature_set.feature_names),
             }
         )
 
-        full_pred_scaled = _predict_ensemble(models, X_all_scaled, config.prediction_mode)
+        # Retrain the final ensemble on the complete dataset using the
+        # validation-selected epoch count for each member.
+        x_scaler, y_scaler = _fit_scalers(X_all, y_all)
+        X_all_scaled, y_all_scaled = _transform_xy(x_scaler, y_scaler, X_all, y_all)
+        final_models = []
+        for member_index, best_epoch in enumerate(member_epochs):
+            member_seed = config.seed + member_index
+            final_models.append(
+                _retrain_member_full_dataset(
+                    config,
+                    X_all_scaled,
+                    y_all_scaled,
+                    member_seed,
+                    best_epoch,
+                )
+            )
+
+        full_pred_scaled = _predict_ensemble(final_models, X_all_scaled, config.prediction_mode)
         full_pred = np.clip(_inverse_target(y_scaler, full_pred_scaled), a_min=1.0e-6, a_max=None)
 
         final_dir = output_root / "final_model"
@@ -249,7 +320,7 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
             },
             final_dir / "preprocessing.joblib",
         )
-        for member_index, model in enumerate(models, start=1):
+        for member_index, model in enumerate(final_models, start=1):
             torch.save(model.state_dict(), final_dir / f"member_{member_index:02d}.pt")
 
         validation_frame = meta.iloc[valid_idx].copy()
@@ -270,6 +341,7 @@ def train_sensor_model(config: TrainingConfig) -> dict[str, object]:
             "groups": int(pd.Series(groups).nunique()),
             "feature_names": list(feature_set.feature_names),
             "validation_metrics": valid_metrics,
+            "retrained_on_full_dataset": True,
         }
         (output_root / "summary.json").write_text(json.dumps(summary, indent=2))
         return summary
