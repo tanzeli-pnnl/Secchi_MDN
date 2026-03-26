@@ -2,28 +2,28 @@
   "sensor": "tm",
   "fit_mode": "final",
   "rows": 5555,
-  "groups": 737,
+  "groups": 331,
   "feature_names": [
     "blue",
     "green",
     "red",
     "green_over_blue",
-    "blue_over_green",
     "blue_over_red",
     "green_over_red",
-    "red_over_green",
     "line_height_blue_green_red"
   ],
   "validation_metrics": {
-    "n": 1168,
-    "mae": 1.2482055244482597,
-    "rmse": 2.2488058121138095,
-    "mape_percent": 37.61214096687262,
-    "rmsle": 0.450222787903483,
-    "r2": 0.9149307433415762,
-    "epsilon_percent": 29.008864213275864,
-    "beta_percent": -15.666194756034301,
-    "mean_member_val_nll": 22068.050618171692,
-    "n_features": 9
-  }
+    "n": 895,
+    "mae": 0.7364510789049004,
+    "rmse": 1.0385296995840192,
+    "mape_percent": 55.12983941459885,
+    "rmsle": 0.4892514669252622,
+    "r2": 0.8295672820885863,
+    "epsilon_percent": 26.430585980415344,
+    "beta_percent": 14.777373528136506,
+    "mean_member_val_nll": -0.6850918233394623,
+    "mean_selected_epochs": 18.2,
+    "n_features": 7
+  },
+  "retrained_on_full_dataset": true
 }

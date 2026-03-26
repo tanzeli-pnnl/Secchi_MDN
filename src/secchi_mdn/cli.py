@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only 'train' is currently implemented.",
     )
     parser.add_argument("--dataset-dir", required=False, help="Directory containing the Maciel XLSX files.")
-    parser.add_argument("--output-dir", default="outputs", help="Directory where models and metrics are saved.")
+    parser.add_argument("--output-dir", default="outputs_final", help="Directory where models and metrics are saved.")
     parser.add_argument("--sensor", choices=["tm", "etm", "oli", "all"], default="all")
     parser.add_argument("--fit-mode", choices=["final", "monte_carlo"], default="final")
     parser.add_argument("--include-ratios", action=argparse.BooleanOptionalAction, default=True)

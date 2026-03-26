@@ -2,28 +2,28 @@
   "sensor": "oli",
   "fit_mode": "final",
   "rows": 5555,
-  "groups": 737,
+  "groups": 331,
   "feature_names": [
     "blue",
     "green",
     "red",
     "green_over_blue",
-    "blue_over_green",
     "blue_over_red",
     "green_over_red",
-    "red_over_green",
     "line_height_blue_green_red"
   ],
   "validation_metrics": {
-    "n": 1168,
-    "mae": 1.4550373504874434,
-    "rmse": 3.0369805763467856,
-    "mape_percent": 35.73777269537282,
-    "rmsle": 0.5783249923404874,
-    "r2": 0.8448496511438466,
-    "epsilon_percent": 31.441184081249098,
-    "beta_percent": -22.77805177051082,
-    "mean_member_val_nll": 74.19139102548361,
-    "n_features": 9
-  }
+    "n": 895,
+    "mae": 0.6883847124609143,
+    "rmse": 1.0133200047452233,
+    "mape_percent": 46.196672796227155,
+    "rmsle": 0.4595796374074964,
+    "r2": 0.8377411621843414,
+    "epsilon_percent": 23.44814449550765,
+    "beta_percent": 9.461568295955658,
+    "mean_member_val_nll": -0.7193699061870575,
+    "mean_selected_epochs": 21.3,
+    "n_features": 7
+  },
+  "retrained_on_full_dataset": true
 }

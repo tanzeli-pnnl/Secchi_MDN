@@ -47,6 +47,7 @@ class TestFeatureEngineering(unittest.TestCase):
         args = parser.parse_args(["train", "--dataset-dir", "/tmp/data"])
         self.assertEqual(args.command, "train")
         self.assertEqual(args.sensor, "all")
+        self.assertEqual(args.output_dir, "outputs_final")
 
 
 if __name__ == "__main__":

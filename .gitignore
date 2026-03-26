@@ -117,3 +117,15 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated model outputs
+outputs/
+outputs_20*/
+outputs_*/
+outputs_debug/
+outputs_cli_debug/
+outputs_probe/
+outputs_final_test/
+outputs_final_rerun_*/
+!outputs_final/
+!outputs_final/**

@@ -29,7 +29,7 @@ Train all three sensor-specific global models with the paper-style fixed archite
 ```bash
 python main.py train \
   --dataset-dir "/Users/tanz151/Library/CloudStorage/OneDrive-PNNL/Documents/Projects/Others/EBSD_LDRD_FY26/Data/Maciel_etal_2023/Simulated Dataset" \
-  --output-dir outputs
+  --output-dir outputs_final
 ```
 
 Train only the OLI model:
@@ -38,7 +38,7 @@ Train only the OLI model:
 python main.py train \
   --dataset-dir "/Users/tanz151/Library/CloudStorage/OneDrive-PNNL/Documents/Projects/Others/EBSD_LDRD_FY26/Data/Maciel_etal_2023/Simulated Dataset" \
   --sensor oli \
-  --output-dir outputs
+  --output-dir outputs_final
 ```
 
 Useful knobs:
@@ -60,4 +60,5 @@ Useful knobs:
 - The defaults now match the authors' recommended MDN architecture: `n_mix=5`, `hidden=[100,100,100,100,100]`, `l2=0.001`, `lr=0.001`, `epsilon=0.001`.
 - The original public scripts mostly use three visible bands for TM, ETM+, and OLI, with ratio features enabled.
 - The original repository wraps a larger TensorFlow MDN package. This repo reimplements the training path in PyTorch so it is easier to understand and maintain.
-- The grouped split key here is reconstructed as `local + year-month(date)`, which is the closest match to the `local_year_month` grouping used in the published scripts.
+- The grouped split key here uses `local` as a field-campaign proxy so grouped splits keep each locality together.
+- Historical generated outputs are gitignored; the canonical destination for current final-model artifacts is `outputs_final/`.
