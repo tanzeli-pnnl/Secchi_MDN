@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.secchi_mdn.cli import build_parser
 from src.secchi_mdn.features import build_feature_matrix
+from src.secchi_mdn.plotting import save_scatterplot
 
 
 class TestFeatureEngineering(unittest.TestCase):
@@ -48,6 +49,14 @@ class TestFeatureEngineering(unittest.TestCase):
         self.assertEqual(args.command, "train")
         self.assertEqual(args.sensor, "all")
         self.assertEqual(args.output_dir, "outputs_final")
+
+    def test_save_scatterplot_creates_output(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = f"{tmpdir}/plot.png"
+            save_scatterplot([1.0, 2.0], [1.1, 1.9], output_path, "Title", "x", "y")
+            self.assertTrue(pd.io.common.file_exists(output_path))
 
 
 if __name__ == "__main__":

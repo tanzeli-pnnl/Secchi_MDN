@@ -1,0 +1,9 @@
+{
+  "data_root": "/Users/tanz151/Documents/Projects/Others/EBSD_LDRD_FY26/Data/Maciel_etal_2023/ACOLITE_Matchups",
+  "model_root": "/Users/tanz151/Secchi_MDN/outputs_final",
+  "sensors": [
+    "tm",
+    "etm",
+    "oli"
+  ]
+}

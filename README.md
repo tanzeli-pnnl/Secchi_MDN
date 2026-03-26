@@ -55,6 +55,22 @@ Useful knobs:
 - `--prediction-mode top`
 - `--include-coastal` if you want to experiment with the OLI coastal band
 
+## Prediction And Plotting
+
+Rebuild the measured-vs-estimated training plots from saved final-model predictions:
+
+```bash
+python scripts/plot_training_predictions.py --output-root outputs_final
+```
+
+Apply the saved final MDNs to the ACOLITE matchup files and generate comparison tables and plots:
+
+```bash
+python scripts/predict_acolite_validation.py \
+  --model-root outputs_final \
+  --data-dir "/Users/tanz151/Documents/Projects/Others/EBSD_LDRD_FY26/Data/Maciel_etal_2023/ACOLITE_Matchups"
+```
+
 ## Notes On Reproduction
 
 - The defaults now match the authors' recommended MDN architecture: `n_mix=5`, `hidden=[100,100,100,100,100]`, `l2=0.001`, `lr=0.001`, `epsilon=0.001`.
