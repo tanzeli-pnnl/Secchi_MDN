@@ -1,9 +1,14 @@
 {
   "data_root": "/Users/tanz151/Documents/Projects/Others/EBSD_LDRD_FY26/Data/Maciel_etal_2023/ACOLITE_Matchups",
-  "model_root": "/Users/tanz151/Secchi_MDN/outputs_final",
+  "model_root": "outputs_final",
   "sensors": [
     "tm",
     "etm",
     "oli"
+  ],
+  "observed_metric_subset": "positive_observed_only",
+  "extreme_maciel_outlier_rule": "maciel_predicted_secchi_m > 100.0",
+  "excluded_uids_for_metrics": [
+    "Daniel_TM_5305"
   ]
 }

@@ -1,0 +1,1 @@
+index,uid,secchi_m,lat,lon,Provider,image_name,coastal,blue,green,red,nir,swir1.(sr-1),swir2.(sr-1),maciel_predicted_secchi_m,date_time,our_predicted_secchi_m,has_positive_observation,is_extreme_maciel_outlier,exclude_from_metrics,outlier_note,prediction_difference_vs_maciel_m,abs_error_ours_vs_observed_m,abs_error_maciel_vs_observed_m

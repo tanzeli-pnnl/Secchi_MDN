@@ -6,9 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import matplotlib
 import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.secchi_mdn.inference import load_final_ensemble, predict_from_frame
 from src.secchi_mdn.metrics import summarize_regression
@@ -52,6 +57,18 @@ RENAME_BY_SENSOR = {
     },
 }
 
+EXCLUDED_UIDS_FOR_METRICS = {"Daniel_TM_5305"}
+
+
+def _metrics_row(sensor: str, reference: str, model: str, subset: str, y_true, y_pred) -> dict[str, object]:
+    return {
+        "sensor": sensor,
+        "reference": reference,
+        "model": model,
+        "subset": subset,
+        **summarize_regression(y_true, y_pred),
+    }
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -84,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     summary_rows = []
+    flagged_rows = []
 
     for sensor in args.sensors:
         bundle = load_final_ensemble(model_root, sensor)
@@ -91,6 +109,26 @@ def main(argv: list[str] | None = None) -> int:
         aligned, pred_secchi = predict_from_frame(bundle, frame)
 
         aligned["our_predicted_secchi_m"] = pred_secchi
+        aligned["has_positive_observation"] = aligned["secchi_m"] > 0
+        aligned["is_extreme_maciel_outlier"] = aligned["maciel_predicted_secchi_m"] > 100.0
+        aligned["exclude_from_metrics"] = aligned["uid"].isin(EXCLUDED_UIDS_FOR_METRICS)
+        aligned["outlier_note"] = ""
+        aligned.loc[
+            aligned["is_extreme_maciel_outlier"],
+            "outlier_note",
+        ] = "Extreme Maciel-predicted Secchi outlier; inspect before aggregate interpretation."
+        aligned.loc[
+            aligned["exclude_from_metrics"],
+            "outlier_note",
+        ] = (
+            aligned.loc[aligned["exclude_from_metrics"], "outlier_note"]
+            .replace("", "Excluded from aggregate metrics by uid.")
+            .where(
+                aligned.loc[aligned["exclude_from_metrics"], "outlier_note"] == "",
+                aligned.loc[aligned["exclude_from_metrics"], "outlier_note"]
+                + " Excluded from aggregate metrics by uid.",
+            )
+        )
         aligned["prediction_difference_vs_maciel_m"] = aligned["our_predicted_secchi_m"] - aligned["maciel_predicted_secchi_m"]
         aligned["abs_error_ours_vs_observed_m"] = (aligned["our_predicted_secchi_m"] - aligned["secchi_m"]).abs()
         aligned["abs_error_maciel_vs_observed_m"] = (aligned["maciel_predicted_secchi_m"] - aligned["secchi_m"]).abs()
@@ -98,34 +136,49 @@ def main(argv: list[str] | None = None) -> int:
         sensor_dir = output_dir / sensor
         sensor_dir.mkdir(parents=True, exist_ok=True)
         aligned.to_csv(sensor_dir / "predictions_with_comparison.csv", index=False)
+        aligned.loc[aligned["is_extreme_maciel_outlier"]].to_csv(sensor_dir / "flagged_outliers.csv", index=False)
 
+        metric_rows = aligned.loc[~aligned["exclude_from_metrics"]].copy()
+        observed_positive = metric_rows.loc[metric_rows["has_positive_observation"]].copy()
         metrics_frame = pd.DataFrame(
             [
-                {
-                    "sensor": sensor,
-                    "reference": "observed_secchi_m",
-                    "model": "our_final_mdn",
-                    **summarize_regression(aligned["secchi_m"].to_numpy(), aligned["our_predicted_secchi_m"].to_numpy()),
-                },
-                {
-                    "sensor": sensor,
-                    "reference": "observed_secchi_m",
-                    "model": "maciel_2023_prediction",
-                    **summarize_regression(aligned["secchi_m"].to_numpy(), aligned["maciel_predicted_secchi_m"].to_numpy()),
-                },
-                {
-                    "sensor": sensor,
-                    "reference": "maciel_predicted_secchi_m",
-                    "model": "our_final_mdn",
-                    **summarize_regression(
-                        aligned["maciel_predicted_secchi_m"].to_numpy(),
-                        aligned["our_predicted_secchi_m"].to_numpy(),
-                    ),
-                },
+                _metrics_row(
+                    sensor,
+                    "observed_secchi_m",
+                    "our_final_mdn",
+                    "positive_observed_only",
+                    observed_positive["secchi_m"].to_numpy(),
+                    observed_positive["our_predicted_secchi_m"].to_numpy(),
+                ),
+                _metrics_row(
+                    sensor,
+                    "observed_secchi_m",
+                    "maciel_2023_prediction",
+                    "positive_observed_only",
+                    observed_positive["secchi_m"].to_numpy(),
+                    observed_positive["maciel_predicted_secchi_m"].to_numpy(),
+                ),
+                _metrics_row(
+                    sensor,
+                    "maciel_predicted_secchi_m",
+                    "our_final_mdn",
+                    "all_rows_excluding_named_outliers",
+                    metric_rows["maciel_predicted_secchi_m"].to_numpy(),
+                    metric_rows["our_predicted_secchi_m"].to_numpy(),
+                ),
             ]
         )
         metrics_frame.to_csv(sensor_dir / "comparison_metrics.csv", index=False)
         summary_rows.extend(metrics_frame.to_dict(orient="records"))
+        if aligned["is_extreme_maciel_outlier"].any():
+            flagged_rows.extend(
+                aligned.loc[
+                    aligned["is_extreme_maciel_outlier"],
+                    ["uid", "secchi_m", "maciel_predicted_secchi_m", "our_predicted_secchi_m"],
+                ]
+                .assign(sensor=sensor)
+                .to_dict(orient="records")
+            )
 
         save_three_panel_comparison(
             plot_dir / f"{sensor}_comparison.png",
@@ -137,12 +190,16 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = pd.DataFrame(summary_rows)
     summary.to_csv(output_dir / "comparison_metrics_summary.csv", index=False)
+    pd.DataFrame(flagged_rows).to_csv(output_dir / "flagged_outliers_summary.csv", index=False)
     (output_dir / "run_manifest.json").write_text(
         json.dumps(
             {
                 "data_root": str(data_dir),
                 "model_root": str(model_root),
                 "sensors": list(args.sensors),
+                "observed_metric_subset": "positive_observed_only",
+                "extreme_maciel_outlier_rule": "maciel_predicted_secchi_m > 100.0",
+                "excluded_uids_for_metrics": sorted(EXCLUDED_UIDS_FOR_METRICS),
             },
             indent=2,
         )
